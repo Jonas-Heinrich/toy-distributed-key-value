@@ -1,0 +1,27 @@
+version: "3.3"
+services:
+  leader:
+    image: toy-distributed-key-value
+    command: leader
+    networks:
+      - kv
+  follower:
+    image: toy-distributed-key-value
+    command: follower
+    networks:
+      - kv
+    depends_on:
+      - leader
+
+  tester:
+    image: toy-distributed-key-value
+    command: tester
+    networks:
+      - kv
+    depends_on:
+      - leader
+      - follower
+
+networks:
+  kv:
+    driver: bridge

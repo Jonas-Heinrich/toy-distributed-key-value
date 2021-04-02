@@ -1,0 +1,7 @@
+*
+!kv
+!test
+!Dockerfile
+!go.mod
+!main.go
+!Makefile
