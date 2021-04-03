@@ -1,70 +1,47 @@
 package kv
 
 import (
-	"encoding/json"
 	"fmt"
-	"log"
 	"net"
 	"net/http"
-	"os"
+
+	"github.com/gorilla/mux"
 )
 
 type KeyValueStore struct {
-	localAddress     net.IP
-	leaderAddress    net.IP
-	followerAdresses []net.IP
-	leader           bool
-	initialized      bool
-	database         map[string]string
+	LocalAddress      net.IP            `json:"localAddress"`
+	LeaderAddress     net.IP            `json:"leaderAddress"`
+	FollowerAddresses []net.IP          `json:"followerAddresses"`
+	Leader            bool              `json:"leader"`
+	Initialized       bool              `json:"initialized"`
+	Database          map[string]string `json:"database"`
 }
 
-// Get preferred outbound ip of this machine
-// Source: https://stackoverflow.com/questions/23558425/how-do-i-get-the-local-ip-address-in-go
-func getOutboundIP() net.IP {
-	conn, err := net.Dial("udp", "leader:8080")
-	if err != nil {
-		log.Fatal(err)
+func InitKeyValueStore(leader bool, leaderAddress net.IP) KeyValueStore {
+	localAddress := GetOutboundIP()
+	if leader {
+		leaderAddress = localAddress
 	}
-	defer conn.Close()
-
-	localAddr := conn.LocalAddr().(*net.UDPAddr)
-
-	return localAddr.IP
-}
-
-func (kv KeyValueStore) PrintKeyValueStoreInfo() {
-	msg := "KeyValueStore Information\n" +
-		"=========================\n" +
-		"Local IP Address: %s\n" +
-		"Leader: %t\n" +
-		"Initialized: %t\n" +
-		"Content: %s\n"
-
-	content, err := json.MarshalIndent(kv.database, "", "    ")
-	if err != nil {
-		fmt.Println(err)
-		os.Exit(1)
-	}
-
-	fmt.Printf(msg+"\n", kv.localAddress, kv.leader, kv.initialized, content)
-}
-
-func InitKeyValueStore(leader bool) KeyValueStore {
-	ipAddress := getOutboundIP()
 	return KeyValueStore{
-		ipAddress,
-		getOutboundIP(),
+		localAddress,
+		leaderAddress,
 		make([]net.IP, 0),
 		leader,
 		leader,
 		make(map[string]string)}
 }
 
-func (kv KeyValueStore) ServeKeyValueStore() {
-	http.HandleFunc("/status", status)
-	http.HandleFunc("/kill", kill)
-	http.HandleFunc("/content", kv.content)
+func (kv KeyValueStore) Serve(release bool) {
+	r := mux.NewRouter()
+
+	if !release {
+		s := r.PathPrefix("/dev").Subrouter()
+		s.HandleFunc("/kill", kill).Methods("POST")
+		s.HandleFunc("/state", kv.state).Methods("GET")
+	}
+
+	r.HandleFunc("/status", status).Methods("GET")
 
 	fmt.Println("Start serving..")
-	http.ListenAndServe(":8080", nil)
+	http.ListenAndServe(":8080", r)
 }

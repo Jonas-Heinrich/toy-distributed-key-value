@@ -2,12 +2,12 @@ version: "3.3"
 services:
   leader:
     image: toy-distributed-key-value
-    command: leader
+    command: run --leader
     networks:
       - kv
   follower:
     image: toy-distributed-key-value
-    command: follower
+    command: run
     networks:
       - kv
     depends_on:
@@ -15,7 +15,7 @@ services:
 
   tester:
     image: toy-distributed-key-value
-    command: tester
+    command: test
     networks:
       - kv
     depends_on:

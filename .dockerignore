@@ -1,7 +1,10 @@
 *
 !kv
 !test
+!vendor
+
 !Dockerfile
 !go.mod
+!go.sum
 !main.go
 !Makefile
