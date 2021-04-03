@@ -86,4 +86,15 @@ func TestInitialState(t *testing.T) {
 	}
 
 	fmt.Println("\tAll containers have their expected initial state!")
+
+	fmt.Printf(`
+	Test Configuration Information
+	==============================
+
+	Leader IP Address: %s
+	Follower IP Adresses: %s
+`,
+		leaderAddress.String(),
+		followerAddresses)
+
 }

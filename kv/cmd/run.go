@@ -10,12 +10,12 @@ import (
 )
 
 var leader bool
-var networkMemberAddress string
+var networkEntryAddress string
 
 func init() {
 	rootCmd.AddCommand(runCmd)
 	runCmd.PersistentFlags().BoolVarP(&leader, "leader", "l", false, "leader")
-	runCmd.PersistentFlags().StringVarP(&networkMemberAddress, "networkMemberAddress", "a", "", "IP Address of the initial network member node")
+	runCmd.PersistentFlags().StringVarP(&networkEntryAddress, "networkEntryAddress", "a", "", "IP address of network member node, which will be used as an entry point")
 }
 
 var runCmd = &cobra.Command{
@@ -25,7 +25,7 @@ var runCmd = &cobra.Command{
 	Run: func(cmd *cobra.Command, args []string) {
 		var nodeAddress net.IP
 		if release {
-			nodeAddress = net.ParseIP(networkMemberAddress)
+			nodeAddress = net.ParseIP(networkEntryAddress)
 			if nodeAddress == nil {
 				fmt.Println(fmt.Errorf("an initial network member ip address has to be provided in release mode"))
 				os.Exit(1)
@@ -36,6 +36,6 @@ var runCmd = &cobra.Command{
 		}
 
 		keyValueStore := kv.InitKeyValueStore(leader, nodeAddress)
-		keyValueStore.Serve(release)
+		keyValueStore.Start(release)
 	},
 }
