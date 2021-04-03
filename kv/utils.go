@@ -48,13 +48,13 @@ func RespondJSON(w http.ResponseWriter, statusCode int, response interface{}) {
 	w.Write(payload)
 }
 
-func TestEqualMessageResponse(resp *http.Response, expectedStatusCode int, expectedResponse MessageResponse) bool {
+func TestEqualMessageResponse(resp *http.Response, expectedStatusCode int, expectedResponse InfoMessage) bool {
 	if resp.StatusCode != expectedStatusCode {
 		fmt.Printf("Status code does not match (%d)\n", resp.StatusCode)
 		return false
 	}
 
-	var actualResponse MessageResponse
+	var actualResponse InfoMessage
 	bodyBytes, _ := ioutil.ReadAll(resp.Body)
 	err := json.Unmarshal(bodyBytes, &actualResponse)
 	if err != nil {
@@ -74,13 +74,13 @@ func TestEqualMessageResponse(resp *http.Response, expectedStatusCode int, expec
 	return equal
 }
 
-func TestEqualStateResponse(resp *http.Response, expectedStatusCode int, expectedResponse StateResponse) bool {
+func TestEqualStateResponse(resp *http.Response, expectedStatusCode int, expectedResponse StateMessage) bool {
 	if resp.StatusCode != expectedStatusCode {
 		fmt.Printf("Status code does not match (%d)\n", resp.StatusCode)
 		return false
 	}
 
-	var actualResponse StateResponse
+	var actualResponse StateMessage
 	bodyBytes, _ := ioutil.ReadAll(resp.Body)
 	err := json.Unmarshal(bodyBytes, &actualResponse)
 	if err != nil {

@@ -35,7 +35,7 @@ func TestStatus(t *testing.T) {
 		}
 		defer resp.Body.Close()
 
-		if !kv.TestEqualMessageResponse(resp, http.StatusOK, kv.StatusOKResponse) {
+		if !kv.TestEqualMessageResponse(resp, http.StatusOK, kv.StatusOKMessage) {
 			fmt.Printf("\tStatus does not return expected answer for %s\n", ipAddress.String())
 			t.Fail()
 			os.Exit(1)
@@ -53,15 +53,18 @@ func TestStatus(t *testing.T) {
 func TestInitialState(t *testing.T) {
 	fmt.Println("Running test `TestInitialState`..")
 
-	if !testKVStateEqual(leaderAddress, kv.StateResponse{
-		MessageResponse: kv.StatusOKResponse,
+	if !testKVStateEqual(leaderAddress, kv.StateMessage{
+		InfoMessage: kv.StatusOKMessage,
 		KeyValueStore: kv.KeyValueStore{
+			Leader: true,
+			Term:   0,
+
 			LocalAddress:      kv.LEADER_IP_ADDRESS,
 			LeaderAddress:     kv.LEADER_IP_ADDRESS,
 			FollowerAddresses: make([]net.IP, 0),
-			Leader:            true,
-			Initialized:       true,
-			Database:          make(map[string]string),
+
+			Initialized: true,
+			Database:    make(map[string]string),
 		}}) {
 		fmt.Println("\tLeader state does not match expectations")
 		t.Fail()
@@ -69,15 +72,18 @@ func TestInitialState(t *testing.T) {
 	}
 
 	for _, elem := range followerAddresses {
-		if !testKVStateEqual(elem, kv.StateResponse{
-			MessageResponse: kv.StatusOKResponse,
+		if !testKVStateEqual(elem, kv.StateMessage{
+			InfoMessage: kv.StatusOKMessage,
 			KeyValueStore: kv.KeyValueStore{
+				Leader: false,
+				Term:   0,
+
 				LocalAddress:      elem,
 				LeaderAddress:     nil,
 				FollowerAddresses: make([]net.IP, 0),
-				Leader:            false,
-				Initialized:       false,
-				Database:          make(map[string]string),
+
+				Initialized: false,
+				Database:    make(map[string]string),
 			}}) {
 			fmt.Println("\tFollower state does not match expectations")
 			t.Fail()

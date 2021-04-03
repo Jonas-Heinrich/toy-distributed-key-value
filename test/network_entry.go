@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/url"
 	"testing"
+	"time"
 
 	"github.com/Jonas-Heinrich/toy-distributed-key-value/kv"
 )
@@ -20,7 +21,7 @@ func testNetworkEntry(externalAddress net.IP, entryAddress net.IP) bool {
 	}
 	defer resp.Body.Close()
 
-	if !kv.TestEqualMessageResponse(resp, 200, kv.StatusOKResponse) {
+	if !kv.TestEqualMessageResponse(resp, 200, kv.StatusOKMessage) {
 		fmt.Println("\tNode did not return expected response")
 		return false
 	}
@@ -39,16 +40,21 @@ func TestDirectNetworkEntry(t *testing.T) {
 		return
 	}
 
+	time.Sleep(kv.MAX_ELECTION_TIMEOUT)
+
 	// Test Leader State
-	if !testKVStateEqual(leaderAddress, kv.StateResponse{
-		MessageResponse: kv.StatusOKResponse,
+	if !testKVStateEqual(leaderAddress, kv.StateMessage{
+		InfoMessage: kv.StatusOKMessage,
 		KeyValueStore: kv.KeyValueStore{
+			Leader: true,
+			Term:   0,
+
 			LocalAddress:      kv.LEADER_IP_ADDRESS,
 			LeaderAddress:     kv.LEADER_IP_ADDRESS,
 			FollowerAddresses: []net.IP{externalAddress},
-			Leader:            true,
-			Initialized:       true,
-			Database:          make(map[string]string),
+
+			Initialized: true,
+			Database:    make(map[string]string),
 		}}) {
 		fmt.Println("\tLeader state does not match expectations")
 		t.Fail()
@@ -56,15 +62,18 @@ func TestDirectNetworkEntry(t *testing.T) {
 	}
 
 	// Test Follower State
-	if !testKVStateEqual(externalAddress, kv.StateResponse{
-		MessageResponse: kv.StatusOKResponse,
+	if !testKVStateEqual(externalAddress, kv.StateMessage{
+		InfoMessage: kv.StatusOKMessage,
 		KeyValueStore: kv.KeyValueStore{
+			Leader: false,
+			Term:   0,
+
 			LocalAddress:      externalAddress,
 			LeaderAddress:     leaderAddress,
-			FollowerAddresses: make([]net.IP, 0),
-			Leader:            false,
-			Initialized:       false,
-			Database:          make(map[string]string),
+			FollowerAddresses: []net.IP{externalAddress},
+
+			Initialized: false,
+			Database:    make(map[string]string),
 		}}) {
 		fmt.Println("\tFollower state does not match expectations")
 		t.Fail()
@@ -86,37 +95,57 @@ func TestIndirectNetworkEntry(t *testing.T) {
 		return
 	}
 
+	time.Sleep(kv.MAX_ELECTION_TIMEOUT)
+
 	// Test Leader State
-	if !testKVStateEqual(leaderAddress, kv.StateResponse{
-		MessageResponse: kv.StatusOKResponse,
+	if !testKVStateEqual(leaderAddress, kv.StateMessage{
+		InfoMessage: kv.StatusOKMessage,
 		KeyValueStore: kv.KeyValueStore{
+			Leader: true,
+			Term:   0,
+
 			LocalAddress:      kv.LEADER_IP_ADDRESS,
 			LeaderAddress:     kv.LEADER_IP_ADDRESS,
 			FollowerAddresses: []net.IP{entryAddress, externalAddress},
-			Leader:            true,
-			Initialized:       true,
-			Database:          make(map[string]string),
+
+			Initialized: true,
+			Database:    make(map[string]string),
 		}}) {
 		fmt.Println("\tLeader state does not match expectations")
 		t.Fail()
 		return
 	}
 
-	// Test Follower State
-	if !testKVStateEqual(externalAddress, kv.StateResponse{
-		MessageResponse: kv.StatusOKResponse,
-		KeyValueStore: kv.KeyValueStore{
-			LocalAddress:      externalAddress,
-			LeaderAddress:     leaderAddress,
-			FollowerAddresses: make([]net.IP, 0),
-			Leader:            false,
-			Initialized:       false,
-			Database:          make(map[string]string),
-		}}) {
-		fmt.Println("\tFollower state does not match expectations")
-		t.Fail()
-		return
+	// Test State of current followers
+	for _, followerAddress := range []net.IP{entryAddress, externalAddress} {
+		if !testKVStateEqual(followerAddress, kv.StateMessage{
+			InfoMessage: kv.StatusOKMessage,
+			KeyValueStore: kv.KeyValueStore{
+				Leader: false,
+				Term:   0,
+
+				LocalAddress:      followerAddress,
+				LeaderAddress:     leaderAddress,
+				FollowerAddresses: []net.IP{entryAddress, externalAddress},
+
+				Initialized: false,
+				Database:    make(map[string]string),
+			}}) {
+			fmt.Println("HERE")
+			fmt.Println("\tFollower state does not match expectations")
+			t.Fail()
+			return
+		}
 	}
 
+	// Register remaining followers directly
+	for _, followerAddress := range followerAddresses[2:] {
+		if !testNetworkEntry(followerAddress, leaderAddress) {
+			fmt.Println("\tRegistration failed")
+			t.Fail()
+			return
+		}
+
+	}
 	fmt.Println("\tNode entered successfully!")
 }

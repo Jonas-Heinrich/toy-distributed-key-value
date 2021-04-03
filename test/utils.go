@@ -8,7 +8,7 @@ import (
 	"github.com/Jonas-Heinrich/toy-distributed-key-value/kv"
 )
 
-func testKVStateEqual(address net.IP, expectedState kv.StateResponse) bool {
+func testKVStateEqual(address net.IP, expectedState kv.StateMessage) bool {
 	resp, err := http.Get(kv.GetURL(address, "/dev/state"))
 	if err != nil {
 		fmt.Println(err)

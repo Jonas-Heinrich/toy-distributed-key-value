@@ -17,7 +17,7 @@ run-kv: build-kv
 	./build/toy-distributed-kv
 
 run-dc: build-docker
-	$(SUDO_PREFIX) docker-compose up --scale follower=2 --abort-on-container-exit
+	$(SUDO_PREFIX) docker-compose up --scale follower=5 #--abort-on-container-exit
 
 clean:
 	find build ! -name '.gitignore' -type f -exec rm -f {} +

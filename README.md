@@ -28,6 +28,9 @@ Details:
 
 In our atomic estimation poker session, we estimated that this project will take between 8 and 21 hours to complete.
 
-## Documentation
+## Testing Setup
+
+- Tests unfortunately currently depend on one another
+- Tests require a set number of followers (=5)
 
 

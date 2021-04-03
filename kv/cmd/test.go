@@ -28,7 +28,8 @@ var testCmd = &cobra.Command{
 				{"TestStatus", kvtest.TestStatus},
 				{"TestInitialState", kvtest.TestInitialState},
 				{"TestDirectNetworkEntry", kvtest.TestDirectNetworkEntry},
-				{"TestIndirectNetworkEntry", kvtest.TestIndirectNetworkEntry}},
+				{"TestIndirectNetworkEntry", kvtest.TestIndirectNetworkEntry},
+				{"TestLeaderElection", kvtest.TestLeaderElection}},
 			[]testing.InternalBenchmark{},
 			[]testing.InternalExample{})
 	},

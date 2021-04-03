@@ -8,13 +8,13 @@ import (
 )
 
 func handleDevKill(w http.ResponseWriter, r *http.Request) {
-	RespondJSON(w, http.StatusOK, StatusOKResponse)
+	RespondJSON(w, http.StatusOK, StatusOKMessage)
 	os.Exit(0)
 }
 
 func (kv *KeyValueStore) handleDevState(w http.ResponseWriter, r *http.Request) {
-	RespondJSON(w, http.StatusOK, StateResponse{
-		StatusOKResponse,
+	RespondJSON(w, http.StatusOK, StateMessage{
+		StatusOKMessage,
 		*kv,
 	})
 }
@@ -22,7 +22,7 @@ func (kv *KeyValueStore) handleDevState(w http.ResponseWriter, r *http.Request) 
 func (kv *KeyValueStore) handleDevRegister(w http.ResponseWriter, r *http.Request) {
 	rawAddress := r.FormValue("ip")
 	if rawAddress == "" {
-		RespondJSON(w, http.StatusBadRequest, MessageResponse{
+		RespondJSON(w, http.StatusBadRequest, InfoMessage{
 			Status:  "error",
 			Message: "No ip address provided"})
 		return
@@ -30,7 +30,7 @@ func (kv *KeyValueStore) handleDevRegister(w http.ResponseWriter, r *http.Reques
 
 	address := net.ParseIP(rawAddress)
 	if address == nil {
-		RespondJSON(w, http.StatusBadRequest, MessageResponse{
+		RespondJSON(w, http.StatusBadRequest, InfoMessage{
 			Status:  "error",
 			Message: "IP does not match expected format"})
 		return
@@ -39,10 +39,10 @@ func (kv *KeyValueStore) handleDevRegister(w http.ResponseWriter, r *http.Reques
 	newLeaderAddress := kv.register(address)
 	if newLeaderAddress != nil {
 		kv.LeaderAddress = newLeaderAddress
-		RespondJSON(w, http.StatusOK, StatusOKResponse)
+		RespondJSON(w, http.StatusOK, StatusOKMessage)
 	} else {
 		fmt.Println("Registration unsuccessful")
-		RespondJSON(w, http.StatusInternalServerError, MessageResponse{
+		RespondJSON(w, http.StatusInternalServerError, InfoMessage{
 			Status:  "error",
 			Message: "Unknown internal server error"})
 	}
