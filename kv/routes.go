@@ -145,29 +145,21 @@ func (kv *KeyValueStore) handleRead(w http.ResponseWriter, r *http.Request) {
 			})
 		}
 	} else {
-		url := r.URL
-		url.Host = kv.LeaderAddress.String()
-
-		proxyReq, _ := http.NewRequest(r.Method, url.String(), r.Body)
-
-		proxyReq.Header.Set("Host", r.Host)
-		proxyReq.Header.Set("X-Forwarded-For", r.RemoteAddr)
-
-		client := &http.Client{}
-		proxyRes, err := client.Do(proxyReq)
+		proxyResp, err := http.Get(GetURL(kv.LeaderAddress, "/read/"+key))
 		if err != nil {
-			fmt.Println("Error while trying to proxy a read request")
+			fmt.Println(err)
 			RespondJSON(w, http.StatusInternalServerError, StatusInternalServerErrorMessage)
 			return
 		}
+		defer proxyResp.Body.Close()
 
-		readMessageBytes, _ := ioutil.ReadAll(proxyRes.Body)
+		readMessageBytes, _ := ioutil.ReadAll(proxyResp.Body)
 		var readMessage ReadMessage
 		if err := json.Unmarshal(readMessageBytes, &readMessage); err != nil {
 			fmt.Println("Unspecified read message format")
 			os.Exit(1)
 		}
 
-		RespondJSON(w, proxyReq.Response.StatusCode, readMessage)
+		RespondJSON(w, proxyResp.StatusCode, readMessage)
 	}
 }

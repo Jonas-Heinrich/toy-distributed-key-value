@@ -27,9 +27,17 @@ var testCmd = &cobra.Command{
 				{"TestTesting", kvtest.TestTesting},
 				{"TestStatus", kvtest.TestStatus},
 				{"TestInitialState", kvtest.TestInitialState},
+
 				{"TestDirectNetworkEntry", kvtest.TestDirectNetworkEntry},
 				{"TestIndirectNetworkEntry", kvtest.TestIndirectNetworkEntry},
-				{"TestLeaderElection", kvtest.TestLeaderElection}},
+
+				{"TestLeaderElection", kvtest.TestLeaderElection},
+
+				{"TestInitialDirectRead", kvtest.TestInitialDirectRead},
+				{"TestInitialIndirectRead", kvtest.TestInitialIndirectRead},
+				{"TestInitialDirectReadNotFound", kvtest.TestInitialDirectReadNotFound},
+				{"TestInitialIndirectReadNotFound", kvtest.TestInitialIndirectReadNotFound},
+			},
 			[]testing.InternalBenchmark{},
 			[]testing.InternalExample{})
 	},
