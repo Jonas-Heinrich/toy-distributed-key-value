@@ -8,6 +8,8 @@ import (
 	"net/http"
 	"os"
 	"time"
+
+	"github.com/gorilla/mux"
 )
 
 func handleStatus(w http.ResponseWriter, r *http.Request) {
@@ -119,4 +121,53 @@ func (kv *KeyValueStore) handleLeaderRequest(w http.ResponseWriter, r *http.Requ
 		InfoMessage: StatusOKMessage,
 		IP:          kv.LeaderAddress,
 	})
+}
+
+//
+// Read/Write
+//
+
+func (kv *KeyValueStore) handleRead(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	key := vars["key"]
+
+	if kv.Leader {
+		value, ok := kv.Database[key]
+		if ok {
+			RespondJSON(w, http.StatusOK, ReadMessage{
+				InfoMessage: StatusOKMessage,
+				Value:       value,
+			})
+		} else {
+			RespondJSON(w, http.StatusNotFound, ReadMessage{
+				InfoMessage: StatusValueNotFoundMessage,
+				Value:       "",
+			})
+		}
+	} else {
+		url := r.URL
+		url.Host = kv.LeaderAddress.String()
+
+		proxyReq, _ := http.NewRequest(r.Method, url.String(), r.Body)
+
+		proxyReq.Header.Set("Host", r.Host)
+		proxyReq.Header.Set("X-Forwarded-For", r.RemoteAddr)
+
+		client := &http.Client{}
+		proxyRes, err := client.Do(proxyReq)
+		if err != nil {
+			fmt.Println("Error while trying to proxy a read request")
+			RespondJSON(w, http.StatusInternalServerError, StatusInternalServerErrorMessage)
+			return
+		}
+
+		readMessageBytes, _ := ioutil.ReadAll(proxyRes.Body)
+		var readMessage ReadMessage
+		if err := json.Unmarshal(readMessageBytes, &readMessage); err != nil {
+			fmt.Println("Unspecified read message format")
+			os.Exit(1)
+		}
+
+		RespondJSON(w, proxyReq.Response.StatusCode, readMessage)
+	}
 }

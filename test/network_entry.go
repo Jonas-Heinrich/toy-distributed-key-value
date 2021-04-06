@@ -54,7 +54,7 @@ func TestDirectNetworkEntry(t *testing.T) {
 			FollowerAddresses: []net.IP{externalAddress},
 
 			Initialized: true,
-			Database:    make(map[string]string),
+			Database:    map[string]string{"initial": "value"},
 		}}) {
 		fmt.Println("\tLeader state does not match expectations")
 		t.Fail()
@@ -73,7 +73,7 @@ func TestDirectNetworkEntry(t *testing.T) {
 			FollowerAddresses: []net.IP{externalAddress},
 
 			Initialized: false,
-			Database:    make(map[string]string),
+			Database:    map[string]string{"initial": "value"},
 		}}) {
 		fmt.Println("\tFollower state does not match expectations")
 		t.Fail()
@@ -109,7 +109,7 @@ func TestIndirectNetworkEntry(t *testing.T) {
 			FollowerAddresses: []net.IP{entryAddress, externalAddress},
 
 			Initialized: true,
-			Database:    make(map[string]string),
+			Database:    map[string]string{"initial": "value"},
 		}}) {
 		fmt.Println("\tLeader state does not match expectations")
 		t.Fail()
@@ -129,7 +129,7 @@ func TestIndirectNetworkEntry(t *testing.T) {
 				FollowerAddresses: []net.IP{entryAddress, externalAddress},
 
 				Initialized: false,
-				Database:    make(map[string]string),
+				Database:    map[string]string{"initial": "value"},
 			}}) {
 			fmt.Println("HERE")
 			fmt.Println("\tFollower state does not match expectations")

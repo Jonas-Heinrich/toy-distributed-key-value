@@ -78,7 +78,7 @@ func TestLeaderElection(t *testing.T) {
 			FollowerAddresses: followerAddresses,
 
 			Initialized: true,
-			Database:    make(map[string]string),
+			Database:    map[string]string{"initial": "value"},
 		}}) {
 		fmt.Println("\tLeader state does not match expectations")
 		t.Fail()
@@ -98,7 +98,7 @@ func TestLeaderElection(t *testing.T) {
 				FollowerAddresses: followerAddresses,
 
 				Initialized: false,
-				Database:    make(map[string]string),
+				Database:    map[string]string{"initial": "value"},
 			}}) {
 			fmt.Println("\tFollower state does not match expectations")
 			t.Fail()

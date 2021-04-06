@@ -47,7 +47,7 @@ func InitKeyValueStore(leader bool, leaderAddress net.IP) KeyValueStore {
 		FollowerAddresses: make([]net.IP, 0),
 
 		Initialized: leader,
-		Database:    make(map[string]string),
+		Database:    map[string]string{"initial": "value"},
 	}
 }
 
@@ -86,6 +86,9 @@ func (kv *KeyValueStore) Start(release bool) {
 	r.HandleFunc("/leader", kv.handleLeaderUpdate).Methods("POST")
 	r.HandleFunc("/leader", kv.handleLeaderRequest).Methods("GET")
 
+	// Read/Write
+	r.HandleFunc("/read/{key}", kv.handleRead).Methods("GET")
+
 	fmt.Println("Start serving..")
 	http.ListenAndServe(":8080", r)
 }
@@ -120,7 +123,7 @@ func (kv *KeyValueStore) heartBeat() {
 	}
 }
 
-func (kv *KeyValueStore) broadCastLeaderUpdate() {
+func (kv *KeyValueStore) broadcastLeaderUpdate() {
 	for _, followerAddress := range kv.FollowerAddresses {
 		go func(followerAddress net.IP) {
 			jsonValue, _ := json.Marshal(LeaderUpdateMessage{
@@ -217,7 +220,7 @@ func (kv *KeyValueStore) runPoll() {
 		kv.FollowerAddresses[len(kv.FollowerAddresses)-1], kv.FollowerAddresses[localAddressIndex] = kv.FollowerAddresses[localAddressIndex], kv.FollowerAddresses[len(kv.FollowerAddresses)-1]
 		kv.FollowerAddresses = kv.FollowerAddresses[:len(kv.FollowerAddresses)-1]
 
-		go kv.broadCastLeaderUpdate()
+		go kv.broadcastLeaderUpdate()
 		go kv.heartBeat()
 
 		fmt.Printf("Won election (%s)\n", kv.LocalAddress)
