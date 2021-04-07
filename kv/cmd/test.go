@@ -24,19 +24,29 @@ var testCmd = &cobra.Command{
 		flag.Set("test.v", "true")
 		testing.Main(func(pat, str string) (bool, error) { return true, nil },
 			[]testing.InternalTest{
+				// Essential tests: cannot be left out
 				{"TestTesting", kvtest.TestTesting},
 				{"TestStatus", kvtest.TestStatus},
 				{"TestInitialState", kvtest.TestInitialState},
 
+				// Essential tests: cannot be left out
 				{"TestDirectNetworkEntry", kvtest.TestDirectNetworkEntry},
 				{"TestIndirectNetworkEntry", kvtest.TestIndirectNetworkEntry},
+				{"TestNetworkEntryLogReplication", kvtest.TestNetworkEntryLogReplication},
+				{"TestRemainingNetworkEntry", kvtest.TestRemainingNetworkEntry},
 
+				// Leader Election
 				{"TestLeaderElection", kvtest.TestLeaderElection},
 
+				// Read
 				{"TestInitialDirectRead", kvtest.TestInitialDirectRead},
 				{"TestInitialIndirectRead", kvtest.TestInitialIndirectRead},
 				{"TestInitialDirectReadNotFound", kvtest.TestInitialDirectReadNotFound},
 				{"TestInitialIndirectReadNotFound", kvtest.TestInitialIndirectReadNotFound},
+
+				// Write
+				{"TestDirectWrite", kvtest.TestDirectWrite},
+				{"TestIndirectWrite", kvtest.TestIndirectWrite},
 			},
 			[]testing.InternalBenchmark{},
 			[]testing.InternalExample{})

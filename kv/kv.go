@@ -3,7 +3,6 @@ package kv
 import (
 	"bytes"
 	"encoding/json"
-	"fmt"
 	"io/ioutil"
 	"log"
 	"net"
@@ -11,23 +10,45 @@ import (
 	"net/url"
 	"os"
 	"reflect"
+	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/gorilla/mux"
 )
 
-type KeyValueStore struct {
-	Leader              bool `json:"leader"`
-	Term                int  `json:"term"`
-	lastLeaderHeartBeat time.Time
-	nextVoteTerm        int
+type Follower struct {
+	Address net.IP `json:"address"`
 
-	LocalAddress      net.IP   `json:"localAddress"`
-	LeaderAddress     net.IP   `json:"leaderAddress"`
-	FollowerAddresses []net.IP `json:"followerAddresses"`
+	LastLogHash         string `json:"lastLogHash"`
+	LastCommitedLogHash string `json:"lastCommitedLogHash"`
+}
+
+type KeyValueStore struct {
+	// "Shared" Network Properties
+
+	Term          uint64     `json:"term"`
+	Leader        bool       `json:"leader"`
+	LeaderAddress net.IP     `json:"leaderAddress"`
+	Followers     []Follower `json:"followers"`
+	LocalAddress  net.IP     `json:"localAddress"`
+
+	// Private Network Properties
+
+	lastLeaderHeartBeat time.Time
+	nextVoteTerm        uint64
+
+	// Database Properties
 
 	Initialized bool              `json:"initialized"`
 	Database    map[string]string `json:"database"`
+	DatabaseLog []*KeyValueLog    `json:"databaseLog"`
+
+	// Mutex
+
+	followerMutex sync.RWMutex
+	databaseMutex sync.RWMutex
+	logMutex      sync.RWMutex
 }
 
 func InitKeyValueStore(leader bool, leaderAddress net.IP) KeyValueStore {
@@ -37,17 +58,18 @@ func InitKeyValueStore(leader bool, leaderAddress net.IP) KeyValueStore {
 	}
 
 	return KeyValueStore{
-		Leader:              leader,
-		Term:                0,
+		Term:          0,
+		Leader:        leader,
+		LeaderAddress: leaderAddress,
+		Followers:     make([]Follower, 0),
+		LocalAddress:  localAddress,
+
 		lastLeaderHeartBeat: time.Now(),
 		nextVoteTerm:        0,
 
-		LocalAddress:      localAddress,
-		LeaderAddress:     leaderAddress,
-		FollowerAddresses: make([]net.IP, 0),
-
 		Initialized: leader,
 		Database:    map[string]string{"initial": "value"},
+		DatabaseLog: []*KeyValueLog{INITIAL_LOG},
 	}
 }
 
@@ -60,7 +82,7 @@ func (kv *KeyValueStore) Start(release bool) {
 		if leaderAddress := kv.register(kv.LeaderAddress); leaderAddress != nil {
 			kv.LeaderAddress = leaderAddress
 		} else {
-			fmt.Println("Could not register with leader")
+			ErrorLogger.Println("Could not register with leader")
 			os.Exit(1)
 		}
 	}
@@ -86,10 +108,15 @@ func (kv *KeyValueStore) Start(release bool) {
 	r.HandleFunc("/leader", kv.handleLeaderUpdate).Methods("POST")
 	r.HandleFunc("/leader", kv.handleLeaderRequest).Methods("GET")
 
-	// Read/Write
+	// Read
 	r.HandleFunc("/read/{key}", kv.handleRead).Methods("GET")
 
-	fmt.Println("Start serving..")
+	// Write
+	r.HandleFunc("/write/{key}", kv.handleWrite).Methods("POST")
+	r.HandleFunc("/log/append", kv.handleLogAppend).Methods("POST")
+	r.HandleFunc("/log/commit", kv.handleCommit).Methods("POST")
+
+	InfoLogger.Println("Start serving..")
 	http.ListenAndServe(":8080", r)
 }
 
@@ -102,66 +129,55 @@ func (kv *KeyValueStore) heartBeat() {
 		return
 	}
 
+	// As long as the leader lives
 	for {
-		for _, followerAddress := range kv.FollowerAddresses {
-			go func(followerAddress net.IP) {
+		// Send HeartBeat to current followers
+		kv.followerMutex.RLock()
+		for _, follower := range kv.Followers {
+			go func(follower Follower) {
 				jsonValue, _ := json.Marshal(HeartBeatMessage{
-					InfoMessage:       StatusOKMessage,
-					Term:              kv.Term,
-					FollowerAddresses: kv.FollowerAddresses,
+					InfoMessage: StatusOKMessage,
+					Term:        kv.Term,
+					Followers:   kv.Followers,
 				})
-				resp, err := http.Post(GetURL(followerAddress, "/heart-beat"), "application/json", bytes.NewBuffer(jsonValue))
+				resp, err := http.Post(GetURL(follower.Address, "/heart-beat"), "application/json", bytes.NewBuffer(jsonValue))
 				if err != nil {
-					fmt.Println(err)
+					ErrorLogger.Println(err)
 					return
 				}
 				defer resp.Body.Close()
-			}(followerAddress)
+			}(follower)
 		}
-
+		kv.followerMutex.RUnlock()
 		time.Sleep(LEADER_HEART_BEAT_TIMEOUT)
 	}
 }
 
-func (kv *KeyValueStore) broadcastLeaderUpdate() {
-	for _, followerAddress := range kv.FollowerAddresses {
-		go func(followerAddress net.IP) {
-			jsonValue, _ := json.Marshal(LeaderUpdateMessage{
-				Leader: kv.LeaderAddress,
-				Term:   kv.Term,
-			})
-			resp, err := http.Post(GetURL(followerAddress, "/leader"), "application/json", bytes.NewBuffer(jsonValue))
-			if err != nil {
-				fmt.Println(err)
-				return
-			}
-			defer resp.Body.Close()
-		}(followerAddress)
-	}
-}
-
 func (kv *KeyValueStore) runPoll() {
-	kv.Term++
+	atomic.AddUint64(&kv.Term, 1)
 	yesVotes := 0
 	noVotes := 0
 	localAddressIndex := 0
 
-	fmt.Printf("Running election (%d)\n", kv.Term)
+	InfoLogger.Printf("Running election (%d)\n", kv.Term)
 
-	for index, followerAddress := range kv.FollowerAddresses {
+	kv.followerMutex.RLock()
+	kv.logMutex.RLock()
+	for index, follower := range kv.Followers {
 		// Do not send poll to oneself
-		if net.IP.Equal(followerAddress, kv.LocalAddress) {
+		if net.IP.Equal(follower.Address, kv.LocalAddress) {
 			localAddressIndex = index
 			continue
 		}
 		// Send poll requests to others
-		go func(followerAddress net.IP, yesVotes *int, noVotes *int) {
+		go func(term uint64, lastLogHash string, follower Follower, yesVotes *int, noVotes *int) {
 			jsonValue, _ := json.Marshal(PollRequestMessage{
-				Term:             kv.Term,
+				Term:             term,
 				NewLeaderAddress: kv.LocalAddress,
+				LastLogHash:      lastLogHash,
 			})
 
-			req, err := http.NewRequest("GET", GetURL(followerAddress, "/poll"), nil)
+			req, err := http.NewRequest("GET", GetURL(follower.Address, "/poll"), nil)
 			if err != nil {
 				log.Print(err)
 				os.Exit(1)
@@ -173,7 +189,9 @@ func (kv *KeyValueStore) runPoll() {
 			client := &http.Client{}
 			resp, err := client.Do(req)
 			if err != nil {
-				fmt.Println(err)
+				kv.logMutex.RUnlock()
+				kv.followerMutex.RUnlock()
+				ErrorLogger.Println(err)
 				return
 			}
 			defer resp.Body.Close()
@@ -183,7 +201,9 @@ func (kv *KeyValueStore) runPoll() {
 			var pollResponse PollResponseMessage
 			err = json.Unmarshal(bodyBytes, &pollResponse)
 			if err != nil {
-				fmt.Println(err)
+				kv.logMutex.RUnlock()
+				kv.followerMutex.RUnlock()
+				ErrorLogger.Println(err)
 				return
 			}
 
@@ -192,10 +212,12 @@ func (kv *KeyValueStore) runPoll() {
 			} else {
 				*noVotes += 1
 			}
-		}(followerAddress, &yesVotes, &noVotes)
+		}(kv.Term, kv.DatabaseLog[kv.findLastCommitedLog()].Hash, follower, &yesVotes, &noVotes)
 	}
+	kv.logMutex.RUnlock()
+	maxVotes := len(kv.Followers) - 1
+	kv.followerMutex.RUnlock()
 
-	maxVotes := len(kv.FollowerAddresses) - 1
 	majorityVote := int(float32(maxVotes)*0.5) + 1 // Half plus one
 	won := false
 	for {
@@ -209,7 +231,7 @@ func (kv *KeyValueStore) runPoll() {
 	}
 
 	// Check if current election is still the newest, else invalidate
-	won = won && (kv.nextVoteTerm == kv.Term)
+	won = won && (kv.nextVoteTerm <= kv.Term)
 
 	if won {
 		kv.Leader = true
@@ -217,13 +239,27 @@ func (kv *KeyValueStore) runPoll() {
 		kv.LeaderAddress = kv.LocalAddress
 
 		// Delete oneself from follower addresses
-		kv.FollowerAddresses[len(kv.FollowerAddresses)-1], kv.FollowerAddresses[localAddressIndex] = kv.FollowerAddresses[localAddressIndex], kv.FollowerAddresses[len(kv.FollowerAddresses)-1]
-		kv.FollowerAddresses = kv.FollowerAddresses[:len(kv.FollowerAddresses)-1]
+		kv.followerMutex.Lock()
+		kv.Followers[len(kv.Followers)-1], kv.Followers[localAddressIndex] = kv.Followers[localAddressIndex], kv.Followers[len(kv.Followers)-1]
+		kv.Followers = kv.Followers[:len(kv.Followers)-1]
+		kv.followerMutex.Unlock()
 
-		go kv.broadcastLeaderUpdate()
+		// Broadcast leader update
+		leaderData := LeaderUpdateMessage{
+			Leader: kv.LeaderAddress,
+			Term:   kv.Term,
+		}
+		var leaderAcceptedCounter uint64 = 0
+		_ = kv.Broadcast(
+			"/leader",
+			leaderData,
+			&leaderAcceptedCounter,
+		)
 		go kv.heartBeat()
 
-		fmt.Printf("Won election (%s)\n", kv.LocalAddress)
+		InfoLogger.Printf("Won election (Term: %d, Yes: %d, No: %d)\n", kv.Term, yesVotes, noVotes)
+	} else {
+		InfoLogger.Printf("Lost election (Term: %d, Yes: %d, No: %d)\n", kv.Term, yesVotes, noVotes)
 	}
 
 	// If we have not won, then either another leader will contact us or the checkLeader will trigger again
@@ -243,21 +279,38 @@ func (kv *KeyValueStore) checkLeader() {
 }
 
 func (kv *KeyValueStore) register(entryAddress net.IP) net.IP {
-	retries := 0
-	for {
+	success := false
+	for retries := 0; retries < MAX_REGISTER_RETRIES; retries++ {
 		form := url.Values{}
 		form.Add("ip", kv.LocalAddress.String())
 		resp, err := http.PostForm(GetURL(entryAddress, "/register"), form)
 		if err != nil {
-			fmt.Println(err)
+			ErrorLogger.Println(err)
 			return nil
 		}
 		defer resp.Body.Close()
 
 		if resp.StatusCode == http.StatusOK {
-			if TestEqualMessageResponse(resp, http.StatusOK, StatusOKMessage) {
+			registrationResponseBytes, _ := ioutil.ReadAll(resp.Body)
+			var registrationResponse RegistrationResponseMessage
+			err := json.Unmarshal(registrationResponseBytes, &registrationResponse)
+			if err != nil {
+				ErrorLogger.Println(err)
+				ErrorLogger.Printf("Could not parse response body\n")
+				return nil
+			}
+
+			if registrationResponse.InfoMessage == StatusOKMessage {
+				kv.logMutex.Lock()
+				jsonContent, _ := json.Marshal(registrationResponse.DatabaseLog)
+				InfoLogger.Printf("Got registration response with database log %s\n", jsonContent)
+				kv.DatabaseLog = registrationResponse.DatabaseLog
+
+				kv.logMutex.Unlock()
+				success = true
 				break
 			} else {
+				ErrorLogger.Println("Unknown registration response not parse response body")
 				return nil
 			}
 		} else if resp.StatusCode == http.StatusServiceUnavailable {
@@ -277,15 +330,60 @@ func (kv *KeyValueStore) register(entryAddress net.IP) net.IP {
 			return nil
 		}
 
-		retries++
-		if retries > MAX_REGISTER_RETRIES {
-			return nil
+		time.Sleep(RETRY_INTERVAL)
+	}
+
+	if !success {
+		return nil
+	}
+
+	// Apply database log
+	kv.logMutex.RLock()
+	for _, logEntry := range kv.DatabaseLog {
+		if logEntry.Committed {
+			kv.Database[logEntry.Key] = logEntry.Value
+		} else {
+			break
 		}
 	}
+	kv.logMutex.RUnlock()
 
 	// Reset last leader heart beat to avoid instant election
 	kv.lastLeaderHeartBeat = time.Now()
 	go kv.checkLeader()
 
 	return entryAddress
+}
+
+//
+// Utils
+//
+
+func (kv *KeyValueStore) Broadcast(path string, data interface{}, confirmedCounter *uint64) uint64 {
+	kv.followerMutex.RLock()
+	followerCount := uint64(len(kv.Followers))
+	for _, follower := range kv.Followers {
+		// Follower is deliberately copied here
+		go func(follower Follower, path string, data interface{}, followerCommittedCount *uint64) {
+			jsonValue, _ := json.Marshal(data)
+			url := GetURL(follower.Address, path)
+			for retries := 0; retries < BROADCAST_RETRIES; retries++ {
+				resp, err := http.Post(url, "application/json", bytes.NewBuffer(jsonValue))
+				if err != nil {
+					ErrorLogger.Println(err)
+					return
+				}
+				defer resp.Body.Close()
+				if resp.StatusCode == http.StatusOK {
+					break
+				}
+				time.Sleep(RETRY_INTERVAL)
+			}
+
+			atomic.AddUint64(confirmedCounter, 1)
+		}(follower, path, data, confirmedCounter)
+	}
+	kv.followerMutex.RUnlock()
+
+	return followerCount
 }

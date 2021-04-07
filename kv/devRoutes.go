@@ -1,7 +1,6 @@
 package kv
 
 import (
-	"fmt"
 	"net"
 	"net/http"
 	"os"
@@ -13,15 +12,22 @@ func handleDevKill(w http.ResponseWriter, r *http.Request) {
 }
 
 func (kv *KeyValueStore) handleDevState(w http.ResponseWriter, r *http.Request) {
+	kv.databaseMutex.RLock()
+	kv.logMutex.RLock()
+	kv.followerMutex.RLock()
 	RespondJSON(w, http.StatusOK, StateMessage{
 		StatusOKMessage,
 		*kv,
 	})
+	kv.databaseMutex.RUnlock()
+	kv.logMutex.RUnlock()
+	kv.followerMutex.RUnlock()
 }
 
 func (kv *KeyValueStore) handleDevRegister(w http.ResponseWriter, r *http.Request) {
 	rawAddress := r.FormValue("ip")
 	if rawAddress == "" {
+		ErrorLogger.Println("No ip address provided")
 		RespondJSON(w, http.StatusBadRequest, InfoMessage{
 			Status:  "error",
 			Message: "No ip address provided"})
@@ -30,6 +36,7 @@ func (kv *KeyValueStore) handleDevRegister(w http.ResponseWriter, r *http.Reques
 
 	address := net.ParseIP(rawAddress)
 	if address == nil {
+		ErrorLogger.Println("IP does not match expected format")
 		RespondJSON(w, http.StatusBadRequest, InfoMessage{
 			Status:  "error",
 			Message: "IP does not match expected format"})
@@ -41,7 +48,7 @@ func (kv *KeyValueStore) handleDevRegister(w http.ResponseWriter, r *http.Reques
 		kv.LeaderAddress = newLeaderAddress
 		RespondJSON(w, http.StatusOK, StatusOKMessage)
 	} else {
-		fmt.Println("Registration unsuccessful")
+		ErrorLogger.Println("Registration unsuccessful")
 		RespondJSON(w, http.StatusInternalServerError, InfoMessage{
 			Status:  "error",
 			Message: "Unknown internal server error"})

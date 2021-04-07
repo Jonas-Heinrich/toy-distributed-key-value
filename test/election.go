@@ -13,17 +13,17 @@ import (
 )
 
 func TestLeaderElection(t *testing.T) {
-	fmt.Println("Running test `TestLeaderElection`..")
+	kv.InfoLogger.Println("Running test `TestLeaderElection`..")
 
 	// Wait for any info passed in heartbeat to propagate
-	time.Sleep(kv.MAX_ELECTION_TIMEOUT)
+	time.Sleep(kv.LEADER_HEART_BEAT_TIMEOUT)
 
 	// Kill current leader node
 	resp, err := http.Post(kv.GetURL(leaderAddress, "/dev/kill"), "application/json", nil)
 	if err != nil {
 		// Expected error since the container exits right away
 		if !strings.Contains(err.Error(), "EOF") {
-			fmt.Println(err)
+			kv.ErrorLogger.Println(err)
 			t.Fail()
 			return
 		}
@@ -34,12 +34,12 @@ func TestLeaderElection(t *testing.T) {
 	// Wait for poll to finish
 	time.Sleep(kv.MAX_ELECTION_TIMEOUT)
 	// Wait for first heartbeat to finish (followers correct)
-	time.Sleep(kv.LEADER_HEART_BEAT_TIMEOUT * 2)
+	time.Sleep(kv.LEADER_HEART_BEAT_TIMEOUT)
 
 	// Get new Leader
-	resp, err = http.Get(kv.GetURL(followerAddresses[0], "/leader"))
+	resp, err = http.Get(kv.GetURL(followers[0].Address, "/leader"))
 	if err != nil {
-		fmt.Println(err)
+		kv.ErrorLogger.Println(err)
 		return
 	}
 	defer resp.Body.Close()
@@ -56,55 +56,28 @@ func TestLeaderElection(t *testing.T) {
 
 	leaderAddress = ipMessage.IP
 	var oldFollower int
-	for index, element := range followerAddresses {
-		if element.Equal(leaderAddress) {
+	for index, follower := range followers {
+		if follower.Address.Equal(leaderAddress) {
 			oldFollower = index
 		}
 	}
 	// Unordered remove of old follower
-	followerAddresses[oldFollower] = followerAddresses[len(followerAddresses)-1]
-	followerAddresses[len(followerAddresses)-1] = nil
-	followerAddresses = followerAddresses[:len(followerAddresses)-1]
+	followers[oldFollower] = followers[len(followers)-1]
+	followers = followers[:len(followers)-1]
 
-	// Check new Leader
-	if !testKVStateEqual(leaderAddress, kv.StateMessage{
-		InfoMessage: kv.StatusOKMessage,
-		KeyValueStore: kv.KeyValueStore{
-			Leader: true,
-			Term:   2,
+	term++
 
-			LocalAddress:      leaderAddress,
-			LeaderAddress:     leaderAddress,
-			FollowerAddresses: followerAddresses,
-
-			Initialized: true,
-			Database:    map[string]string{"initial": "value"},
-		}}) {
-		fmt.Println("\tLeader state does not match expectations")
+	if !testLeaderState(followers) {
+		kv.ErrorLogger.Println("\tLeader state does not match expectations")
 		t.Fail()
 		return
 	}
 
-	// Check remaining Followers
-	for _, followerAddress := range followerAddresses { // Check new Leader
-		if !testKVStateEqual(followerAddress, kv.StateMessage{
-			InfoMessage: kv.StatusOKMessage,
-			KeyValueStore: kv.KeyValueStore{
-				Leader: false,
-				Term:   2,
-
-				LocalAddress:      followerAddress,
-				LeaderAddress:     leaderAddress,
-				FollowerAddresses: followerAddresses,
-
-				Initialized: false,
-				Database:    map[string]string{"initial": "value"},
-			}}) {
-			fmt.Println("\tFollower state does not match expectations")
-			t.Fail()
-			return
-		}
+	if !testFollowerStates(followers) {
+		kv.ErrorLogger.Println("\tFollower states do not match expectations")
+		t.Fail()
+		return
 	}
 
-	fmt.Println("\tNode elected successfully!")
+	kv.InfoLogger.Println("\tNode elected successfully!")
 }

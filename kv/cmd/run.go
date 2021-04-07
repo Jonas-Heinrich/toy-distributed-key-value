@@ -27,7 +27,7 @@ var runCmd = &cobra.Command{
 		if release {
 			nodeAddress = net.ParseIP(networkEntryAddress)
 			if nodeAddress == nil {
-				fmt.Println(fmt.Errorf("an initial network member ip address has to be provided in release mode"))
+				kv.ErrorLogger.Println(fmt.Errorf("an initial network member ip address has to be provided in release mode"))
 				os.Exit(1)
 			}
 		} else {

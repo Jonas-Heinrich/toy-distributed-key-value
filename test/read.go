@@ -69,7 +69,7 @@ func TestInitialDirectRead(t *testing.T) {
 func TestInitialIndirectRead(t *testing.T) {
 	fmt.Println("Running test `TestInitialIndirectRead`..")
 
-	if !testRead(followerAddresses[0], "initial", "value", true) {
+	if !testRead(followers[0].Address, "initial", "value", true) {
 		fmt.Println("\tRead request failed")
 		t.Fail()
 		return
@@ -93,7 +93,7 @@ func TestInitialDirectReadNotFound(t *testing.T) {
 func TestInitialIndirectReadNotFound(t *testing.T) {
 	fmt.Println("Running test `TestInitialIndirectReadNotFound`..")
 
-	if !testRead(followerAddresses[0], "whatever", "", false) {
+	if !testRead(followers[0].Address, "whatever", "", false) {
 		fmt.Println("\tRead request failed")
 		t.Fail()
 		return

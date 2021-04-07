@@ -2,7 +2,6 @@ package kv
 
 import (
 	"encoding/json"
-	"fmt"
 	"io/ioutil"
 	"log"
 	"net"
@@ -50,7 +49,7 @@ func RespondJSON(w http.ResponseWriter, statusCode int, response interface{}) {
 
 func TestEqualMessageResponse(resp *http.Response, expectedStatusCode int, expectedResponse InfoMessage) bool {
 	if resp.StatusCode != expectedStatusCode {
-		fmt.Printf("Status code does not match (%d)\n", resp.StatusCode)
+		ErrorLogger.Printf("Status code does not match (%d)\n", resp.StatusCode)
 		return false
 	}
 
@@ -58,7 +57,8 @@ func TestEqualMessageResponse(resp *http.Response, expectedStatusCode int, expec
 	bodyBytes, _ := ioutil.ReadAll(resp.Body)
 	err := json.Unmarshal(bodyBytes, &actualResponse)
 	if err != nil {
-		fmt.Printf("Could not parse response body\n")
+		ErrorLogger.Println(err)
+		ErrorLogger.Printf("Could not parse response body\n")
 		return false
 	}
 
@@ -67,8 +67,8 @@ func TestEqualMessageResponse(resp *http.Response, expectedStatusCode int, expec
 	if !equal {
 		actualJSON, _ := json.Marshal(actualResponse)
 		expectedJSON, _ := json.Marshal(expectedResponse)
-		fmt.Println("\tActual Response: " + string(actualJSON))
-		fmt.Println("\tExpected Response: " + string(expectedJSON))
+		ErrorLogger.Println("\tActual Response: " + string(actualJSON))
+		ErrorLogger.Println("\tExpected Response: " + string(expectedJSON))
 	}
 
 	return equal
@@ -76,7 +76,7 @@ func TestEqualMessageResponse(resp *http.Response, expectedStatusCode int, expec
 
 func TestEqualStateResponse(resp *http.Response, expectedStatusCode int, expectedResponse StateMessage) bool {
 	if resp.StatusCode != expectedStatusCode {
-		fmt.Printf("Status code does not match (%d)\n", resp.StatusCode)
+		ErrorLogger.Printf("Status code does not match (%d)\n", resp.StatusCode)
 		return false
 	}
 
@@ -84,17 +84,36 @@ func TestEqualStateResponse(resp *http.Response, expectedStatusCode int, expecte
 	bodyBytes, _ := ioutil.ReadAll(resp.Body)
 	err := json.Unmarshal(bodyBytes, &actualResponse)
 	if err != nil {
-		fmt.Printf("Could not parse response body\n")
+		ErrorLogger.Printf("Could not parse response body\n")
 		return false
 	}
 
+	actualDatabaseLog := actualResponse.KeyValueStore.DatabaseLog
+	actualResponse.KeyValueStore.DatabaseLog = nil
+
+	expectedDatabaseLog := expectedResponse.KeyValueStore.DatabaseLog
+	expectedResponse.KeyValueStore.DatabaseLog = nil
+
 	equal := reflect.DeepEqual(actualResponse, expectedResponse)
+	equal = equal && (len(actualDatabaseLog) == len(expectedDatabaseLog))
+	if equal {
+		for index, log := range actualDatabaseLog {
+			// Hash, Time cannot be compared, since it was created externally
+			equal = equal &&
+				log.Key == expectedDatabaseLog[index].Key &&
+				log.Value == expectedDatabaseLog[index].Value &&
+				log.Committed == expectedDatabaseLog[index].Committed
+		}
+	}
+
+	actualResponse.KeyValueStore.DatabaseLog = actualDatabaseLog
+	expectedResponse.KeyValueStore.DatabaseLog = expectedDatabaseLog
 
 	if !equal {
 		actualJSON, _ := json.Marshal(actualResponse)
 		expectedJSON, _ := json.Marshal(expectedResponse)
-		fmt.Println("\tActual Response: " + string(actualJSON))
-		fmt.Println("\tExpected Response: " + string(expectedJSON))
+		ErrorLogger.Println("\tActual Response:   " + string(actualJSON))
+		ErrorLogger.Println("\tExpected Response: " + string(expectedJSON))
 	}
 
 	return equal

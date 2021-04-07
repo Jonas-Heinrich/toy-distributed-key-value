@@ -13,6 +13,11 @@ var StatusMissingURLParameterMessage = InfoMessage{"URL parameter missing", "A r
 var StatusBadURLParameterMessage = InfoMessage{"URL parameter malformed", "A URL parameter does not match its specification (count, form, ..)"}
 var StatusInternalServerErrorMessage = InfoMessage{"error occurred", "An unknown internal server error appeared"}
 
+type RegistrationResponseMessage struct {
+	InfoMessage InfoMessage
+	DatabaseLog []*KeyValueLog `json:"databaseLog"`
+}
+
 type StateMessage struct {
 	InfoMessage   InfoMessage
 	KeyValueStore KeyValueStore
@@ -24,14 +29,15 @@ type IPMessage struct {
 }
 
 type HeartBeatMessage struct {
-	InfoMessage       InfoMessage
-	Term              int
-	FollowerAddresses []net.IP `json:"followerAddresses"`
+	InfoMessage InfoMessage
+	Term        uint64     `json:"term"`
+	Followers   []Follower `json:"followers"`
 }
 
 type PollRequestMessage struct {
-	Term             int    `json:"term"`
+	Term             uint64 `json:"term"`
 	NewLeaderAddress net.IP `json:"newLeaderAddress"`
+	LastLogHash      string `json:"lastLogHash"`
 }
 
 type PollResponseMessage struct {
@@ -43,11 +49,11 @@ var PollResponseNo = PollResponseMessage{Yes: false}
 
 type LeaderUpdateMessage struct {
 	Leader net.IP `json:"leader"`
-	Term   int    `json:"term"`
+	Term   uint64 `json:"term"`
 }
 
 //
-// Read/Write
+// Read
 //
 
 type ReadMessage struct {
@@ -56,3 +62,17 @@ type ReadMessage struct {
 }
 
 var StatusValueNotFoundMessage = InfoMessage{"Value not found", "The requested key could not be found in the database"}
+
+//
+// Write
+//
+
+type AppendEntriesMessage struct {
+	KeyValueLog []*KeyValueLog `json:"logs"`
+}
+
+type CommitLogMessage struct {
+	LogHash string `json:"logHash"`
+}
+
+var StatusLogNotFoundMessage = InfoMessage{"Log not found", "The requested log could not be found in the database log, it remains uncommited."}

@@ -11,7 +11,10 @@ import (
 	"github.com/Jonas-Heinrich/toy-distributed-key-value/kv"
 )
 
-var followerAddresses []net.IP
+var term uint64 = 0
+var database = map[string]string{"initial": "value"}
+var databaseLog []*kv.KeyValueLog = []*kv.KeyValueLog{kv.INITIAL_LOG}
+var followers []kv.Follower
 var leaderAddress net.IP
 
 func TestStatus(t *testing.T) {
@@ -23,12 +26,12 @@ func TestStatus(t *testing.T) {
 		ipAddress := kv.GetIPAdress(i)
 		resp, err := http.Get(kv.GetURL(ipAddress, "/status"))
 		if err != nil {
-			fmt.Println(err)
+			kv.ErrorLogger.Println(err)
 			// Expected error when no more replicas can be found
 			if i > 2 && strings.Contains(err.Error(), "connect: connection refused") {
 				break
 			} else {
-				fmt.Println(err)
+				kv.ErrorLogger.Println(err)
 				t.Fail()
 				os.Exit(1)
 			}
@@ -43,7 +46,11 @@ func TestStatus(t *testing.T) {
 			if i == 2 {
 				leaderAddress = ipAddress
 			} else {
-				followerAddresses = append(followerAddresses, ipAddress)
+				followers = append(followers, kv.Follower{
+					Address:             ipAddress,
+					LastLogHash:         kv.INITIAL_LOG.Hash,
+					LastCommitedLogHash: kv.INITIAL_LOG.Hash,
+				})
 			}
 		}
 	}
@@ -53,39 +60,28 @@ func TestStatus(t *testing.T) {
 func TestInitialState(t *testing.T) {
 	fmt.Println("Running test `TestInitialState`..")
 
-	if !testKVStateEqual(leaderAddress, kv.StateMessage{
-		InfoMessage: kv.StatusOKMessage,
-		KeyValueStore: kv.KeyValueStore{
-			Leader: true,
-			Term:   0,
-
-			LocalAddress:      kv.LEADER_IP_ADDRESS,
-			LeaderAddress:     kv.LEADER_IP_ADDRESS,
-			FollowerAddresses: make([]net.IP, 0),
-
-			Initialized: true,
-			Database:    map[string]string{"initial": "value"},
-		}}) {
-		fmt.Println("\tLeader state does not match expectations")
+	if !testLeaderState(make([]kv.Follower, 0)) {
+		kv.ErrorLogger.Println("\tLeader state does not match expectations")
 		t.Fail()
 		return
 	}
 
-	for _, elem := range followerAddresses {
-		if !testKVStateEqual(elem, kv.StateMessage{
-			InfoMessage: kv.StatusOKMessage,
-			KeyValueStore: kv.KeyValueStore{
-				Leader: false,
-				Term:   0,
+	for _, follower := range followers {
+		if !testKVStateEqual(follower.Address,
+			kv.StateMessage{
+				InfoMessage: kv.StatusOKMessage,
+				KeyValueStore: kv.KeyValueStore{
+					Term:          term,
+					Leader:        false,
+					LeaderAddress: nil,
+					Followers:     make([]kv.Follower, 0),
+					LocalAddress:  follower.Address,
 
-				LocalAddress:      elem,
-				LeaderAddress:     nil,
-				FollowerAddresses: make([]net.IP, 0),
-
-				Initialized: false,
-				Database:    map[string]string{"initial": "value"},
-			}}) {
-			fmt.Println("\tFollower state does not match expectations")
+					Initialized: false,
+					Database:    database,
+					DatabaseLog: databaseLog,
+				}}) {
+			kv.ErrorLogger.Println("\tFollower states do not match expectations")
 			t.Fail()
 			return
 		}
@@ -98,9 +94,8 @@ func TestInitialState(t *testing.T) {
 	==============================
 
 	Leader IP Address: %s
-	Follower IP Adresses: %s
+	Follower States:   %s
 `,
 		leaderAddress.String(),
-		followerAddresses)
-
+		followers)
 }

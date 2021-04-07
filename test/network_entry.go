@@ -16,13 +16,13 @@ func testNetworkEntry(externalAddress net.IP, entryAddress net.IP) bool {
 	form.Add("ip", entryAddress.String())
 	resp, err := http.PostForm(kv.GetURL(externalAddress, "/dev/register"), form)
 	if err != nil {
-		fmt.Println(err)
+		kv.ErrorLogger.Println(err)
 		return false
 	}
 	defer resp.Body.Close()
 
 	if !kv.TestEqualMessageResponse(resp, 200, kv.StatusOKMessage) {
-		fmt.Println("\tNode did not return expected response")
+		kv.ErrorLogger.Println("\tNode did not return expected response")
 		return false
 	}
 	return true
@@ -31,11 +31,11 @@ func testNetworkEntry(externalAddress net.IP, entryAddress net.IP) bool {
 func TestDirectNetworkEntry(t *testing.T) {
 	fmt.Println("Running test `TestDirectNetworkEntry`..")
 
-	externalAddress := followerAddresses[0]
+	externalAddress := followers[0].Address
 	entryAddress := leaderAddress
 
 	if !testNetworkEntry(externalAddress, entryAddress) {
-		fmt.Println("\tRegistration failed")
+		kv.ErrorLogger.Println("\tRegistration failed")
 		t.Fail()
 		return
 	}
@@ -46,17 +46,17 @@ func TestDirectNetworkEntry(t *testing.T) {
 	if !testKVStateEqual(leaderAddress, kv.StateMessage{
 		InfoMessage: kv.StatusOKMessage,
 		KeyValueStore: kv.KeyValueStore{
-			Leader: true,
-			Term:   0,
-
-			LocalAddress:      kv.LEADER_IP_ADDRESS,
-			LeaderAddress:     kv.LEADER_IP_ADDRESS,
-			FollowerAddresses: []net.IP{externalAddress},
+			Term:          term,
+			Leader:        true,
+			LeaderAddress: leaderAddress,
+			Followers:     followers[:1],
+			LocalAddress:  leaderAddress,
 
 			Initialized: true,
-			Database:    map[string]string{"initial": "value"},
+			Database:    database,
+			DatabaseLog: databaseLog,
 		}}) {
-		fmt.Println("\tLeader state does not match expectations")
+		kv.ErrorLogger.Println("\tLeader state does not match expectations")
 		t.Fail()
 		return
 	}
@@ -65,32 +65,32 @@ func TestDirectNetworkEntry(t *testing.T) {
 	if !testKVStateEqual(externalAddress, kv.StateMessage{
 		InfoMessage: kv.StatusOKMessage,
 		KeyValueStore: kv.KeyValueStore{
-			Leader: false,
-			Term:   0,
-
-			LocalAddress:      externalAddress,
-			LeaderAddress:     leaderAddress,
-			FollowerAddresses: []net.IP{externalAddress},
+			Term:          term,
+			Leader:        false,
+			LeaderAddress: leaderAddress,
+			Followers:     followers[:1],
+			LocalAddress:  externalAddress,
 
 			Initialized: false,
-			Database:    map[string]string{"initial": "value"},
+			Database:    database,
+			DatabaseLog: databaseLog,
 		}}) {
-		fmt.Println("\tFollower state does not match expectations")
+		kv.ErrorLogger.Println("\tFollower state does not match expectations")
 		t.Fail()
 		return
 	}
 
-	fmt.Println("\tNode entered successfully!")
+	kv.InfoLogger.Println("\tNode entered successfully!")
 }
 
 func TestIndirectNetworkEntry(t *testing.T) {
 	fmt.Println("Running test `TestIndirectNetworkEntry`..")
 
-	externalAddress := followerAddresses[1]
-	entryAddress := followerAddresses[0]
+	externalAddress := followers[1].Address
+	entryAddress := followers[0].Address
 
 	if !testNetworkEntry(externalAddress, entryAddress) {
-		fmt.Println("\tRegistration failed")
+		kv.ErrorLogger.Println("\tRegistration failed")
 		t.Fail()
 		return
 	}
@@ -101,17 +101,17 @@ func TestIndirectNetworkEntry(t *testing.T) {
 	if !testKVStateEqual(leaderAddress, kv.StateMessage{
 		InfoMessage: kv.StatusOKMessage,
 		KeyValueStore: kv.KeyValueStore{
-			Leader: true,
-			Term:   0,
-
-			LocalAddress:      kv.LEADER_IP_ADDRESS,
-			LeaderAddress:     kv.LEADER_IP_ADDRESS,
-			FollowerAddresses: []net.IP{entryAddress, externalAddress},
+			Term:          term,
+			Leader:        true,
+			LeaderAddress: leaderAddress,
+			Followers:     followers[:2],
+			LocalAddress:  leaderAddress,
 
 			Initialized: true,
-			Database:    map[string]string{"initial": "value"},
+			Database:    database,
+			DatabaseLog: databaseLog,
 		}}) {
-		fmt.Println("\tLeader state does not match expectations")
+		kv.ErrorLogger.Println("\tLeader state does not match expectations")
 		t.Fail()
 		return
 	}
@@ -121,31 +121,80 @@ func TestIndirectNetworkEntry(t *testing.T) {
 		if !testKVStateEqual(followerAddress, kv.StateMessage{
 			InfoMessage: kv.StatusOKMessage,
 			KeyValueStore: kv.KeyValueStore{
-				Leader: false,
-				Term:   0,
-
-				LocalAddress:      followerAddress,
-				LeaderAddress:     leaderAddress,
-				FollowerAddresses: []net.IP{entryAddress, externalAddress},
+				Term:          term,
+				Leader:        false,
+				LeaderAddress: leaderAddress,
+				Followers:     followers[:2],
+				LocalAddress:  followerAddress,
 
 				Initialized: false,
-				Database:    map[string]string{"initial": "value"},
+				Database:    database,
+				DatabaseLog: databaseLog,
 			}}) {
-			fmt.Println("HERE")
-			fmt.Println("\tFollower state does not match expectations")
+			kv.ErrorLogger.Println("\tFollower states do not match expectations")
 			t.Fail()
 			return
 		}
 	}
+
+	kv.InfoLogger.Println("\tNode entered successfully!")
+}
+
+func TestNetworkEntryLogReplication(t *testing.T) {
+	fmt.Println("Running test `TestNetworkEntryLogReplication`..")
+
+	testWriteFollowers(followers[:2], leaderAddress, "log", "replication")
+	time.Sleep(kv.LEADER_HEART_BEAT_TIMEOUT)
+
+	follower := followers[2]
+	if !testNetworkEntry(follower.Address, leaderAddress) {
+		kv.ErrorLogger.Println("\tRegistration failed")
+		t.Fail()
+		return
+	}
+
+	time.Sleep(kv.LEADER_HEART_BEAT_TIMEOUT)
+
+	if !testLeaderState(followers[:3]) {
+		kv.ErrorLogger.Println("\tLeader state does not match expectations")
+		t.Fail()
+		return
+	}
+
+	if !testFollowerStates(followers[:3]) {
+		kv.ErrorLogger.Println("\tFollower states do not match expectations")
+		t.Fail()
+		return
+	}
+
+	kv.InfoLogger.Println("\tNode entered and logs replicated successfully!")
+}
+
+func TestRemainingNetworkEntry(t *testing.T) {
+	fmt.Println("Running test `TestRemainingNetworkEntry`..")
 
 	// Register remaining followers directly
-	for _, followerAddress := range followerAddresses[2:] {
-		if !testNetworkEntry(followerAddress, leaderAddress) {
-			fmt.Println("\tRegistration failed")
+	for _, follower := range followers[3:] {
+		if !testNetworkEntry(follower.Address, leaderAddress) {
+			kv.ErrorLogger.Println("\tRegistration failed")
 			t.Fail()
 			return
 		}
-
 	}
-	fmt.Println("\tNode entered successfully!")
+
+	time.Sleep(kv.LEADER_HEART_BEAT_TIMEOUT)
+
+	if !testLeaderState(followers) {
+		kv.ErrorLogger.Println("\tLeader state does not match expectations")
+		t.Fail()
+		return
+	}
+
+	if !testFollowerStates(followers) {
+		kv.ErrorLogger.Println("\tFollower states do not match expectations")
+		t.Fail()
+		return
+	}
+
+	kv.InfoLogger.Println("\tNode entered successfully!")
 }
