@@ -35,25 +35,31 @@ In our atomic estimation poker session, we estimated that this project will take
 
 ## Miscellaneous
 
+### asciinema Recording
+
+The following is a link to the asciinema recording of `make run-dc`:
+
+[![asciicast](https://asciinema.org/a/czpEq0uaNrn7X8yjVasnAo19t.svg)](https://asciinema.org/a/czpEq0uaNrn7X8yjVasnAo19t)
+
 ### Lines of Code for this Project
 
 ```sh
 $ cloc . # without vendor
-      28 text files.
-      28 unique files.                              
-       7 files ignored.
+      29 text files.
+      29 unique files.                              
+       8 files ignored.
 
-github.com/AlDanial/cloc v 1.82  T=0.02 s (1101.4 files/s, 101977.7 lines/s)
+github.com/AlDanial/cloc v 1.82  T=0.04 s (509.5 files/s, 47263.9 lines/s)
 -------------------------------------------------------------------------------
 Language                     files          blank        comment           code
 -------------------------------------------------------------------------------
 Go                              18            308             94           1502
-Markdown                         1             18              0             49
+Markdown                         1             20              0             51
 YAML                             1              2              0             25
 make                             1              6              1             16
 Dockerfile                       1              4              3              9
 -------------------------------------------------------------------------------
-SUM:                            22            338             98           1601
+SUM:                            22            340             98           1603
 -------------------------------------------------------------------------------
 ```
 
